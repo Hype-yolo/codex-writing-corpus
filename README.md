@@ -1,6 +1,6 @@
 # 把自己的 Codex 聊天用作写作参考
 
-从本机 Codex 聊天中提取有出处的中文表达候选，在写作前选择最多三段作为参考。代码只做本地提取、筛选和检索，不调用模型、不联网、不训练。
+从本机 Codex 聊天中提取有出处的中文表达候选，在写作前由模型自主选择参考，不设固定来源数或片段数上限。仓库脚本负责本地提取、候选排序和提示构建，不联网、不训练；选样由宿主或产品已有模型完成。
 
 本仓库为公开发布版本。私人开发与公开发布采用独立仓库和Git历史；发布时仅同步经过检查的通用源码、测试和文档，来源版本见 `release.json`。私人日志、语料、机器配置和实验材料不进入公开仓库。
 
@@ -10,7 +10,7 @@
 
 把克隆后的仓库文件夹交给他自己的Codex，发送下面这段：
 
-> 请检查这个codex-writing-corpus Skill并安装到我的Codex技能目录（CODEX_HOME/skills，没设置时用 ~/.codex/skills）。已有同名版本先比较，不覆盖我的修改。确认本机Python 3.14+及可读的Codex日志，运行提取并让我看候选预览。我授权读取我的本地Codex日志、保存筛选结果，并在每次代我写作或实质改稿时自动选最多3段合格参考交给当前写作模型。请接到我实际使用的写作入口；若我用write-like-me，这次授权包括本地缓存与最多3段正文交接，覆盖其相应默认来源限制。普通问答不注入，我明确给样文时以样文为准。保留出处和归属不确定性，不把AI生成稿或别人文字当作我确认的原创。不要把生成的私人语料库放入公开仓库。
+> 请检查这个codex-writing-corpus Skill并安装到我的Codex技能目录（CODEX_HOME/skills，没设置时用 ~/.codex/skills）。已有同名版本先比较，不覆盖我的修改。确认本机Python 3.14+及可读的Codex日志，运行提取并让我看候选预览。我授权读取我的本地Codex日志、保存筛选结果，并在每次代我写作或实质改稿时由模型自主选择合格参考交给写作模型，不设固定数量上限。请接到我实际使用的写作入口；若我用write-like-me，这次授权包括本地缓存、候选交给选样模型和所选正文交接，覆盖其相应默认来源限制。普通问答不注入，我明确给样文时以样文为准。保留出处和归属不确定性，不把AI生成稿或别人文字当作我确认的原创。不要把生成的私人语料库放入公开仓库。
 
 安装无需把语料发给维护者。缺少Python时让Codex先说明所需运行环境，不把零候选误报为安装成功。不要覆盖其他现有AGENTS或Skill内容。
 
@@ -20,12 +20,12 @@
 
 > 本人已启用codex-writing-corpus。代我写作或实质改稿时，先调用它选择本地表达参考，再执行当前写作方法。普通问答、查资料和纯格式转换不调用；明确指定样文时不额外检索。无合格参考时继续写，不声称匹配过历史文风。
 
-以上是Skill工作流中的调用，不是修改Codex原生模型，也不是永久训练模型。通过API生成文章的独立产品，需要产品代码在请求模型前运行select并加入返回的合格正文；仅安装Skill不会自动改造所有API调用。
+以上是Skill工作流中的调用，不是修改Codex原生模型，也不是永久训练模型。通过API生成文章的独立产品，需要产品代码先运行select、再让模型自主选样，将选择结果交给写作请求；仅安装Skill不会自动改造所有API调用。
 
 ## 如何验收
 
 1. refresh产生自己的候选、统计和出处；抽查几段原文，看是否确实由自己表达。
-2. select对一个新题目返回0–3段，包含真实来源和confirmed/auto_high_confidence分层。
+2. select返回合格候选池，包含真实来源和confirmed/auto_high_confidence分层；随后由模型选样，核对选择结果与最终写作输入一致。
 3. 用同模型、同题目、独立上下文分别测试有无参考，匿名判断。能检索到不等于文章一定更像本人。
 
 本仓库不附带write-like-me官方Skill或任何作者的私人例文，使用接收者自己已有的写作方法。脚本提取与索引完全在本机进行，但选中样文会进入当前写作模型的上下文。
@@ -36,7 +36,7 @@
 
 ```sh
 python3 scripts/codex_corpus.py refresh
-python3 scripts/codex_corpus.py select --query '一次日常消费的选择' --genre '中文短观点' --limit 3
+python3 scripts/codex_corpus.py select --query '一次日常消费的选择' --genre '中文短观点'
 python3 -m unittest discover -s tests -v
 ```
 
@@ -68,6 +68,16 @@ python3.14 -m unittest discover -s tests -v
 
 ## 写作上下文构建器
 
-`python3 scripts/writing_context.py --official-skill <已安装官方SKILL.md>` 从标准输入接受 `{"samples": [...]}`，输出 `prompt` 和 `method_sha256`。使用已有 select 返回的 samples，或显式指定的样文；不重新取样。`--method-only` 只输出官方写作章节。
+`python3 scripts/writing_context.py --official-skill <已安装官方SKILL.md>` 从标准输入接受 `{"samples": [...]}`，输出 `prompt` 和 `method_sha256`。使用模型已选中的 samples，或显式指定的样文；不要直接将 select 候选池当成最终选择。`--method-only` 只输出官方写作章节。
 
 官方章节逐字保留，检索与标题链接交接由已经授权的本地取样流程替代。未识别章节时失败，不猜测新版本结构。官方文件及方法正文不随仓库分发。此分离减少重复输入，不代表已证明文风更好。
+
+## 自主选样接口
+
+默认不限制来源或片段数量，CLI `select` 的字词排序只产生候选池，模型负责最终取舍。`--limit` 是明确调用者可选的检索预算，不是默认选择规则。
+
+- `writing_context.py --selection-prompt`：stdin `{"samples": [...], "query": "主题", "genre": "文体"}`，返回 `prompt` 和 `candidate_count`。交给已有模型，返回 `selected_ids`（短ID）。
+- `writing_context.py --resolve-selection`：stdin `{"samples": 同一候选池, "selection": 模型返回}`，验证ID、归属和出处，返回原始选中 `samples`。支持任意数量和空选择，拒绝未知或重复ID。
+- 最后用普通渲染接口组合已选样文与未改动的官方写作方法。
+
+API产品因此多一次独立选样调用，候选内容会进入该模型上下文。失败时不静默截断为三段，不把整池作为自动替代。上下文和工具响应体积仍有边界；超限需如实报告，不承诺任何规模都能一次处理。

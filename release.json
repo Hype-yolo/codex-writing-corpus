@@ -1,7 +1,7 @@
 {
-  "release": "2026-10-16.1",
+  "release": "2026-10-16.2",
   "source_repository": "Hype-yolo/codex-writing-corpus-private",
-  "source_commit": "8378a29bf9b357f4602b80c22be9a7d3e78ccd2c",
-  "runtime_logic": "unchanged from validated baseline; only release workflow documentation changed",
+  "source_commit": "96bdd0f00da78d912f06f9cbce95e619e086f31c",
+  "runtime_logic": "model-selected references without fixed source or fragment counts; extraction and official writing method preserved",
   "third_party": "Official write-like-me text is an external installed dependency, not distributed here."
 }

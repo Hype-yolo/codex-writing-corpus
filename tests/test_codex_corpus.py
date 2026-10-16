@@ -217,5 +217,17 @@ class CorpusTests(unittest.TestCase):
         self.assertEqual(parsed['query'], '学习的反馈')
 
 
+    def test_default_pool_and_explicit_limit_can_exceed_three(self):
+        for i in range(7):
+            self.file(f'pool{i}.jsonl', [meta(f'pool{i}'), message(EXPRESSION + f'补充观察编号{i}，这个细节也影响我的判断。')])
+        base = [sys.executable, str(SCRIPT), 'select', '--output-dir', str(self.output / 'cli'), '--codex-home', str(self.home)]
+        parsed = json.loads(subprocess.run(base, text=True, capture_output=True, check=True).stdout)
+        self.assertEqual(len(parsed['samples']), 7)
+        self.assertFalse(parsed['selection_applied'])
+        self.assertEqual(parsed['selection_mode'], 'candidate_pool')
+        limited = json.loads(subprocess.run(base + ['--limit', '5'], text=True, capture_output=True, check=True).stdout)
+        self.assertEqual(len(limited['samples']), 5)
+
+
 if __name__ == '__main__':
     unittest.main()
