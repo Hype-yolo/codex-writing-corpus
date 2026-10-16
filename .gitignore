@@ -1,0 +1,47 @@
+# Generated private corpus and databases (never publish)
+writing-corpus/
+data/
+private/
+*.jsonl
+*.jsonl.zst
+*.sqlite*
+*.db
+*.db-*
+decisions.json
+统计.json
+可读语料.md
+*.tmp
+*.lock
+# Python and local environments
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+# Credentials and machine-local configuration
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+*.token
+credentials*
+auth.json
+config.toml
+AGENTS.md
+.DS_Store
+
+# Local experiments, machine-specific files and archives
+experiments/
+output/
+outputs/
+backups/
+local/
+*.log
+*.zip
+*.tar*
+*.sqlite-journal
+完整候选语料.md
+本人确认-*.json
+local-config.*
