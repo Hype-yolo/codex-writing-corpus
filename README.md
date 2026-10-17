@@ -48,7 +48,7 @@ python3 -m unittest discover -s tests -v
 
 克隆本仓库后，将整个仓库作为 `codex-writing-corpus` Skill 安装，根目录的 `SKILL.md` 就是入口。也可将技能目录链接到源码目录，以便更新后直接运行同一 CLI。保留已有同名安装，比较后再替换；不要把生成的语料复制到源码目录。
 
-需要 write-like-me 自动接入时，仓库提供 [通用适配入口](integrations/write-like-me/SKILL.md)。让 Codex 在获得上面的授权后，把实际使用的 write-like-me 入口链接到这个文件。适配器会解析自己的真实路径定位本仓库，并发现当前机器已安装的官方插件。取样结束后，仅加载官方完整 `Write and review` 章节用于写作与复核，不把两套检索流程重复交给写作者；官方插件文件保持原样。没有官方插件时会如实说明，不冒称已使用其方法。其他写作入口也可以直接调用根 Skill。
+需要 write-like-me 自动接入时，仓库提供 [通用适配入口](integrations/write-like-me/SKILL.md)。让 Codex 在获得上面的授权后，把实际使用的 write-like-me 入口链接到这个文件，并按下节显式固定已经确认的写作方法。适配器解析自己的真实路径定位本仓库；日常只读取校验后的私人方法快照，官方插件的更新或删除不会切换方法。其他写作入口也可以直接调用根 Skill。
 
 显式指定 `--codex-home` 只覆盖输入日志路径；默认输出仍由启动时的 `CODEX_HOME` 决定。测试或迁移时同时指定 `--output-dir`，避免意外写入常用数据目录。无历史日志时会返回零候选；这代表没有可提取材料，不代表已验证真实写作调用。
 
@@ -70,9 +70,17 @@ python3.14 -m unittest discover -s tests -v
 
 ## 写作上下文构建器
 
-`python3 scripts/writing_context.py --official-skill <已安装官方SKILL.md>` 从标准输入接受 `{"samples": [...]}`，输出 `prompt` 和 `method_sha256`。使用模型已选中的 samples，或显式指定的样文；不要直接将 select 候选池当成最终选择。`--method-only` 只输出官方写作章节。
+首次安装时，经使用者确认要使用哪版方法后执行：
 
-官方章节逐字保留，检索与标题链接交接由已经授权的本地取样流程替代。未识别章节时失败，不猜测新版本结构。官方文件及方法正文不随仓库分发。此分离减少重复输入，不代表已证明文风更好。
+```sh
+python3 scripts/writing_context.py --pin-official-skill <已确认版本的官方SKILL.md路径>
+```
+
+该命令逐字提取完整 `Write and review` 章节，存入 `${CODEX_HOME:-$HOME/.codex}/writing-methods/write-like-me/`，以内容 SHA-256 命名正文并写入 `lock.json`。可用 `--expected-method-sha256 <已确认摘要>` 校验安装来源。固定只发生在显式安装命令中；同一方法可重复安装，不同方法不会覆盖已有锁。源码安装、更新及日常写作均不自动执行固定命令。未来切换方法需使用者另行明确要求、比较并备份原锁后实施。
+
+日常 `python3 scripts/writing_context.py` 从标准输入接受 `{"samples": [...]}`，校验固定正文后输出 `prompt`、`method_sha256` 与 `method_lock_path`。使用模型已选中的 samples 或显式指定的样文；不要把 select 候选池当成最终选择。`--method-only` 只输出同一固定章节；`--method-lock <路径>` 可显式指定隔离测试或迁移所用的锁。
+
+锁或快照缺失、校验失败时停止方法加载，不搜索官方缓存或降级使用新版本。旧的 `--official-skill` 日常读取参数已移除，产品应使用固定接口。官方插件的检索与标题链接交接仍由已授权的本地取样流程替代，方法正文与语料逻辑不因固定而改变。官方文件、私人快照及锁文件不随仓库分发。
 
 ## 自主选样接口
 

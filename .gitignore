@@ -1,5 +1,7 @@
 # Generated private corpus and databases (never publish)
 writing-corpus/
+writing-methods/
+method-*.md
 data/
 private/
 *.jsonl

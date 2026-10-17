@@ -1,10 +1,12 @@
-"""Render the installed official writing method with already selected references.
-No retrieval, model calls, or bundled third-party skill text.
+"""Render a locally pinned writing method with already selected references.
+No retrieval, model calls, automatic method updates, or bundled third-party text.
 """
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
+import re
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -46,6 +48,72 @@ def official_method(text):
     if not section[len(marker):].strip():
         raise ValueError("Official writing section is empty")
     return section
+
+
+def default_method_lock():
+    home = Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex").expanduser()
+    return home / "writing-methods" / "write-like-me" / "lock.json"
+
+
+def load_pinned_method(lock_path):
+    lock_path = Path(lock_path).expanduser().resolve()
+    try:
+        lock = json.loads(lock_path.read_text(encoding="utf-8"))
+    except FileNotFoundError as exc:
+        raise ValueError(f"Pinned writing method missing: {lock_path}; explicitly pin the approved method first") from exc
+    if not isinstance(lock, dict) or lock.get("schema_version") != 1:
+        raise ValueError("Invalid writing method lock")
+    digest = lock.get("method_sha256")
+    if not isinstance(digest, str) or not re.fullmatch(r"[a-f0-9]{64}", digest):
+        raise ValueError("Invalid pinned method checksum")
+    filename = f"method-{digest}.md"
+    if lock.get("method_file") != filename:
+        raise ValueError("Pinned method filename does not match checksum")
+    path = lock_path.parent / filename
+    try:
+        raw = path.read_bytes()
+    except FileNotFoundError as exc:
+        raise ValueError(f"Pinned method snapshot missing: {path}") from exc
+    if hashlib.sha256(raw).hexdigest() != digest:
+        raise ValueError("Pinned writing method checksum mismatch; refusing an unreviewed method")
+    method = raw.decode("utf-8")
+    if official_method(method) != method:
+        raise ValueError("Pinned snapshot must contain exactly the writing section")
+    return method, {"method_sha256": digest, "method_lock_path": str(lock_path)}
+
+
+def pin_official_method(source_path, lock_path, expected_sha256=None):
+    """Explicit installation only. An existing pin is never replaced automatically."""
+    source_path = Path(source_path).expanduser().resolve()
+    raw = source_path.read_bytes()
+    method = official_method(raw.decode("utf-8"))
+    encoded = method.encode("utf-8")
+    digest = hashlib.sha256(encoded).hexdigest()
+    if expected_sha256 is not None and digest != expected_sha256:
+        raise ValueError("Installed source does not match the approved method checksum")
+    lock_path = Path(lock_path).expanduser().resolve()
+    if lock_path.exists():
+        _, metadata = load_pinned_method(lock_path)
+        if metadata["method_sha256"] != digest:
+            raise ValueError("A different method is already pinned; existing pin was not changed")
+        return metadata
+    lock_path.parent.mkdir(parents=True, mode=0o700, exist_ok=True)
+    filename = f"method-{digest}.md"
+    snapshot = lock_path.parent / filename
+    if snapshot.exists():
+        if snapshot.read_bytes() != encoded:
+            raise ValueError("Existing method snapshot does not match its checksum")
+    else:
+        with snapshot.open("xb") as handle:
+            os.fchmod(handle.fileno(), 0o600)
+            handle.write(encoded)
+    lock = {"schema_version": 1, "method_file": filename, "method_sha256": digest,
+            "source_skill_path": str(source_path),
+            "source_skill_sha256": hashlib.sha256(raw).hexdigest()}
+    with lock_path.open("x", encoding="utf-8") as handle:
+        os.fchmod(handle.fileno(), 0o600)
+        handle.write(json.dumps(lock, ensure_ascii=False, indent=2) + "\n")
+    return load_pinned_method(lock_path)[1]
 
 
 def validate_samples(samples):
@@ -127,26 +195,34 @@ def resolve_selection(samples, selection):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--official-skill", type=Path)
+    parser.add_argument("--method-lock", type=Path, default=default_method_lock())
+    parser.add_argument("--expected-method-sha256", help="Approved checksum for an explicit pin operation")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--selection-prompt", action="store_true")
     mode.add_argument("--resolve-selection", action="store_true")
     mode.add_argument("--method-only", action="store_true")
+    mode.add_argument("--pin-official-skill", type=Path, help="Explicitly snapshot an approved installed writing section")
     args = parser.parse_args()
+    if args.expected_method_sha256 is not None and args.pin_official_skill is None:
+        parser.error("--expected-method-sha256 is only for --pin-official-skill")
+    if args.pin_official_skill is not None:
+        print(json.dumps(pin_official_method(args.pin_official_skill, args.method_lock,
+                                            args.expected_method_sha256), ensure_ascii=False))
+        return
     if args.selection_prompt or args.resolve_selection:
         data = json.load(sys.stdin)
         result = (selection_prompt(data["samples"], data.get("query", ""), data.get("genre", ""))
                   if args.selection_prompt else resolve_selection(data["samples"], data["selection"]))
         print(json.dumps(result, ensure_ascii=False))
         return
-    if args.official_skill is None:
-        parser.error("--official-skill is required for rendering")
-    text = args.official_skill.read_text(encoding="utf-8")
+    text, metadata = load_pinned_method(args.method_lock)
     if args.method_only:
-        sys.stdout.write(official_method(text))
+        sys.stdout.write(text)
     else:
         data = json.load(sys.stdin)
-        print(json.dumps(render(text, data["samples"]), ensure_ascii=False))
+        result = render(text, data["samples"])
+        result.update(metadata)
+        print(json.dumps(result, ensure_ascii=False))
 
 
 if __name__ == "__main__":

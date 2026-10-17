@@ -1,7 +1,7 @@
 {
-  "release": "2026-10-16.3",
+  "release": "2026-10-16.4",
   "source_repository": "Hype-yolo/codex-writing-corpus-private",
-  "source_commit": "e9142ac9f18247d782f9d666f76741c04f3d704b",
-  "runtime_logic": "Reviewed local WeChat snapshots join Codex candidates; autonomous model selection without fixed counts; original writing method unchanged.",
-  "third_party": "Official write-like-me text is an external installed dependency, not distributed here."
+  "source_commit": "3a602da38591167a47a7ef1702d3e71b478b51ba",
+  "runtime_logic": "Explicit private method snapshot and checksum verification; daily callers never discover or update from official plugin caches. Corpus and autonomous reference selection unchanged.",
+  "third_party": "Approved official section is pinned only in each user private data directory. Official text, private locks, provenance paths and corpus are not distributed."
 }
