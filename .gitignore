@@ -8,6 +8,7 @@ private/
 *.db
 *.db-*
 decisions.json
+external-sources.json
 统计.json
 可读语料.md
 *.tmp

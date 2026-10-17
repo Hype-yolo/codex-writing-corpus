@@ -10,8 +10,27 @@
 - 统计.json：索引覆盖、消息与片段数。
 - 语料索引.sqlite3：出处、增量游标、必要用户片段、助手与工具文本的指纹。
 - decisions.json：用户对特定片段的作者确认或拒绝，由用户表达决定后维护。
+- external-sources.json：用户显式启用的外部已审阅语料快照及其 SHA-256；不存在时只使用 Codex 候选。
 
 所有这些是接收者运行后生成的私人文件，不属于公开发布内容。默认0600权限；不要将生成目录公开或同步到公共仓库。
+
+## 接入已审阅的微信语料
+
+`select` 读取数据目录下的 `external-sources.json`，不会自行发现其他文件：
+
+```json
+{"schema_version":1,"sources":[{"name":"my-reviewed-chat","enabled":true,"path":"reviewed-chat.jsonl","sha256":"替换为已审阅整个JSONL文件的64位SHA-256"}]}
+```
+
+path 可为绝对路径或相对 manifest 的路径。显式 `enabled:false` 不加载；启用项缺少有效路径、哈希或名称会失败。快照内容变化后，先重新审阅变化，再更新哈希，不能用重新计算哈希代替审阅。
+
+快照每行是一个样本对象，必须包含 `id`、`text`、`tier:"auto_high_confidence"`、`authorship:{"status":"inferred_not_verified"}`、`reference_eligible:true`、`review:{"status":"accepted","method":"agent_review","reason":"本段审阅依据"}` 和非空 `sources`。模型审阅应筛掉复制转发、他人文本与归属不明内容；只有保留项进入该快照，审阅记录与原始资料仍留在私人目录。accepted 表示本次审阅允许参考，不等于用户本人逐条确认原创。
+
+每个微信 source 包含 `kind:"wechat"`、原始本地 JSONL 的绝对 `path`、正整数 `line`、真实 `conversation_id` 和非空 `timestamp`；可增加精选文件的 `curated_path` 和 `curated_line`。不把微信会话写成 Codex session_id。脚本验证这些字段结构与快照哈希，不会据此证明原作者身份，也不自动重新解析或审阅原始微信记录。
+
+加载后每个微信 source 附带该条记录的 authorship、review、record_id 和 reviewed_snapshot（快照名称、文件、行、哈希），完整信息保留在候选和已选原始样本中供验证、审计。正式写作上下文只带引用正文、真实出处和归属状态，不带审阅理由、归属判断依据或快照审计元数据。正文相同的 Codex/微信样本只出现一次，全部出处保留；某个 Codex 出处已本人确认，不会将另一个微信出处的模型推断升级为本人确认。用户已拒绝的相同正文不因外部快照重新入池。
+
+select 的统计原有字段仍是 Codex 库存；`external_sources_enabled`、`external_samples_loaded` 是本次外部加载数，`external_samples_rejected_by_user_decision` 是被已有本人拒绝决定排除的外部条数，`merged_unique_candidates_before_limit` 和 `duplicate_references_merged` 是合并后的候选数及去重数。refresh 仍只刷新 Codex 索引，不把外部文本复制入其数据库。
 
 ## 筛选能力
 

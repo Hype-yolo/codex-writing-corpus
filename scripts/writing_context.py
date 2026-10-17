@@ -7,6 +7,32 @@ import json
 from pathlib import Path
 import sys
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from external_corpus import source_key, valid_review, valid_wechat_source
+
+
+def valid_log_source(source, sample):
+    if not isinstance(source, dict):
+        return False
+    kind = source.get("kind", "codex")
+    if kind == "wechat":
+        authorship = source.get("authorship", sample.get("authorship"))
+        return (valid_wechat_source(source)
+                and valid_review(source.get("review", sample.get("review")))
+                and isinstance(authorship, dict) and authorship.get("status") == "inferred_not_verified")
+    return (kind == "codex" and isinstance(source.get("path"), str) and bool(source["path"])
+            and isinstance(source.get("session_id"), str) and bool(source["session_id"])
+            and type(source.get("line")) is int and source["line"] > 0)
+
+
+def reference_source(source):
+    keys = ("kind", "path", "line", "session_id", "conversation_id", "timestamp",
+            "start", "end", "content_index", "curated_path", "curated_line")
+    origin = {key: source[key] for key in keys if key in source}
+    if isinstance(source.get("authorship"), dict):
+        origin["authorship"] = {"status": source["authorship"].get("status")}
+    return origin
+
 
 def official_method(text):
     marker = "## Write and review"
@@ -42,9 +68,13 @@ def validate_samples(samples):
         sources = sample.get("sources")
         if not isinstance(sources, list) or not sources:
             raise ValueError("Missing provenance")
-        if tier != "explicit" and not any(isinstance(s, dict) and isinstance(s.get("path"), str) and s["path"] and isinstance(s.get("session_id"), str) and type(s.get("line")) is int for s in sources):
+        if tier != "explicit" and not all(valid_log_source(s, sample) for s in sources):
             raise ValueError("Missing log provenance")
-        refs.append({"id": sid, "tier": tier, "authorship": authorship["status"], "sources": sources, "text": body})
+        if tier == "confirmed" and all(s.get("kind") == "wechat" for s in sources):
+            raise ValueError("External review does not establish human-confirmed authorship")
+        ref = {"id": sid, "tier": tier, "authorship": authorship["status"],
+               "sources": [reference_source(s) for s in sources], "text": body}
+        refs.append(ref)
         ids.add(sid)
     return refs
 
@@ -62,9 +92,11 @@ def selection_prompt(samples, query="", genre=""):
     candidates = []
     for index, ref in enumerate(refs, 1):
         origin = ref["sources"][0]
-        key = origin.get("session_id") or origin.get("path") or ref["id"]
+        key = source_key(origin)
         source_id = sources.setdefault(key, "S" + str(len(sources) + 1))
+        kinds = list(dict.fromkeys(source.get("kind", "explicit" if ref["tier"] == "explicit" else "codex") for source in ref["sources"]))
         candidates.append({"id": "R" + str(index), "source_id": source_id,
+                           "source_kinds": kinds,
                            "authorship": ref["authorship"], "text": ref["text"]})
     instruction = ("你只负责为用户选择写作参考，不写文章。根据任务的文体、受众与沟通目的，"
                    "选择有助于还原作者表达的候选，可跨话题；自行判断哪些有用、互补，哪些重复或不适配。"
